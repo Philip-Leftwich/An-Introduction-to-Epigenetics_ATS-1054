@@ -1,0 +1,177 @@
+---
+title: "R Notebook"
+output:
+  html_document:
+    df_print: paged
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+# Required R packages
+```{r}
+
+library(tidyverse)
+library(survival)
+library(png)
+library(gganimate)
+library(pammtools)
+
+knitr::opts_chunk$set(message = FALSE, warning=FALSE)
+
+```
+# Import custom functions
+
+```{r}
+source("functions.r")
+
+```
+
+# Load data
+
+```{r}
+
+epigenetics <- read_csv("data/epigenetic_worms2.csv") %>% 
+  drop_na()
+
+```
+
+# Survival fit
+
+```{r}
+### Generate survival model
+
+fit5 <- survfit( Surv(days_alive) ~ treatment+generation, data = epigenetics)
+
+```
+
+
+
+
+
+
+# Data cleaning of survival model
+
+```{r}
+sdata<-data.frame(time=fit5$time, surv=fit5$surv, lower=fit5$lower, upper=fit5$upper)
+sdata$strata<-rep(names(fit5$strata), fit5$strata)
+
+sdata$strata <- factor(sdata$strata, levels=c("treatment=+/+, generation=F0", 
+                                              "treatment=set2/set2, generation=F0", 
+                                              "treatment=+/set2, generation=F1", 
+                                              "treatment=+/+, generation=F2", 
+                                              "treatment=+/+, generation=F3", 
+                                              "treatment=+/+, generation=F4", 
+                                              "treatment=+/+, generation=F5"))
+
+sdata <- sdata %>% mutate(strata= recode(strata, "treatment=+/+, generation=F0" = "F5 +/+", 
+                                         "treatment=set2/set2, generation=F0" = "F0 set2/set2",
+                                         "treatment=+/set2, generation=F1" = "F1 +/set2", 
+                                         "treatment=+/+, generation=F2" = "F2 +/+", 
+                                         "treatment=+/+, generation=F3" = "F3 +/+", 
+                                         "treatment=+/+, generation=F4" = "F4 +/+", 
+                                         "treatment=+/+, generation=F5" = "F0 +/+")) 
+
+```
+
+# Data splitting
+
+```{r}
+### Split dataset in order to produce multiple plots
+
+sdata1 <- sdata %>% filter(strata==c("F0 +/+", "F0 set2/set2")) 
+
+sdata2 <- sdata %>% filter(strata==c("F1 +/set2")) %>% 
+mutate(stime=time)
+
+sdata3 <- sdata %>% filter(strata==c("F2 +/+")) %>% 
+mutate(ttime=time)
+
+sdata4 <- sdata %>% filter(strata==c("F3 +/+")) %>% 
+mutate(utime=time)
+
+sdata5 <- sdata %>% filter(strata==c("F4 +/+")) %>% 
+mutate(vtime=time)
+
+sdata6 <- sdata %>% filter(strata==c("F5 +/+")) %>% 
+mutate(wtime=time)
+
+```
+
+
+# Animated GIF plot
+
+```{r}
+
+
+cols <- c( "darkorange", "cyan4","purple" )
+
+kmplot<-ggplot(sdata, aes(x=time, y=surv))+
+    geom_blank()+
+    xlab("Time")+
+    ylab("Survival probability")+
+    theme_custom()
+
+plot1 <- kmplot+ 
+  pammtools::geom_stepribbon(data=sdata1, 
+                             aes(x=time,
+                                 ymin=lower,
+                                 ymax=upper, 
+                                 fill=strata), alpha=0.4)+
+  geom_step(data=sdata1, 
+            aes(x=time, 
+                y=surv, 
+                color=strata))+
+  scale_fill_manual(values=cols)+
+  scale_colour_manual(values=cols)+
+  theme(axis.text.x=element_blank())
+
+plot1a <- plot1+transition_reveal(along=time)
+
+
+animate(plot1a, fps = 20, height=3, width=5, units="in", res=150, renderer = gifski_renderer(loop = TRUE))
+
+### anim_save("figure1.gif")
+
+```
+
+
+
+# Multiple fixed plots using gghighlight to emphasise current generation
+
+```{r}
+
+plot2 <- plot1+  
+  pammtools::geom_stepribbon(data=sdata2, 
+                             aes(x=stime,
+                                 ymin=lower, 
+                                 ymax=upper, 
+                                 fill=strata), alpha=0.2)+
+  geom_step(data=sdata2, 
+            aes(x=stime, 
+                y=surv, 
+                color=strata))+
+  gghighlight::gghighlight(strata %in% c("F0 +/+", "F0 set2/set2", "F1 +/set2"))
+
+```
+
+
+```{r}
+plot3 <- plot2+  pammtools::geom_stepribbon(data=sdata3, aes(x=ttime,ymin=lower, ymax=upper, fill=strata), alpha=0.2)+
+  geom_step(data=sdata3, aes(x=ttime, y=surv, color=strata))+gghighlight::gghighlight(strata %in% c("F0 +/+", "F0 set2/set2", "F2 +/+"))
+
+plot4 <- plot3+  pammtools::geom_stepribbon(data=sdata4, aes(x=utime,ymin=lower, ymax=upper, fill=strata), alpha=0.2)+
+  geom_step(data=sdata4, aes(x=utime, y=surv, color=strata))+gghighlight::gghighlight(strata %in% c("F0 +/+", "F0 set2/set2", "F3 +/+"))
+
+plot5 <- plot4+  pammtools::geom_stepribbon(data=sdata5, aes(x=vtime,ymin=lower, ymax=upper, fill=strata), alpha=0.2)+
+  geom_step(data=sdata5, aes(x=vtime, y=surv, color=strata))+gghighlight::gghighlight(strata %in% c("F0 +/+", "F0 set2/set2", "F4 +/+"))
+
+plot6 <- plot5+  pammtools::geom_stepribbon(data=sdata6, aes(x=wtime,ymin=lower, ymax=upper, fill=strata), alpha=0.2)+
+  geom_step(data=sdata6, aes(x=wtime, y=surv, color=strata))+gghighlight::gghighlight(strata %in% c("F0 +/+", "F0 set2/set2", "F5 +/+"))
+
+plot6
+
+```
+
+
